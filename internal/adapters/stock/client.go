@@ -25,6 +25,47 @@ func New(base string) *Client {
 	return &Client{base: strings.TrimRight(base, "/"), http: &http.Client{Timeout: 10 * time.Second}}
 }
 
+func (c *Client) KitRecipes(ctx context.Context) (map[string][]domain.OrderItemComponent, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/assemblies", nil)
+	if err != nil {
+		return nil, err
+	}
+	if tok, ok := ctx.Value(AuthHeaderKey).(string); ok && tok != "" {
+		req.Header.Set("Authorization", tok)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("stock: %s", strings.TrimSpace(string(b)))
+	}
+	var raw []struct {
+		ProductID string `json:"product_id"`
+		Items     []struct {
+			ProductID string  `json:"product_id"`
+			Quantity  float64 `json:"quantity"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+	out := make(map[string][]domain.OrderItemComponent, len(raw))
+	for _, a := range raw {
+		if a.ProductID == "" {
+			continue
+		}
+		comps := make([]domain.OrderItemComponent, 0, len(a.Items))
+		for _, it := range a.Items {
+			comps = append(comps, domain.OrderItemComponent{ProductID: it.ProductID, Quantity: it.Quantity})
+		}
+		out[a.ProductID] = comps
+	}
+	return out, nil
+}
+
 func (c *Client) Product(ctx context.Context, id string) (domain.ProductLoad, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/products/"+id, nil)
 	if err != nil {

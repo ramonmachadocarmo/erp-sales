@@ -139,6 +139,94 @@ type Directory interface {
 
 type Catalog interface {
 	Product(ctx context.Context, id string) (ProductLoad, error)
+	// KitRecipes maps a kit's own linked product id to the components (per 1 kit) it consumes.
+	KitRecipes(ctx context.Context) (map[string][]OrderItemComponent, error)
+}
+
+// kitLineComponents returns the component quantities a kit line consumes: the line's own
+// Components (customer substitutions, absolute quantities) or the kit recipe times the line quantity.
+func kitLineComponents(it OrderItem, recipe []OrderItemComponent) []OrderItemComponent {
+	src := recipe
+	mult := it.Quantity
+	if len(it.Components) > 0 {
+		src, mult = it.Components, 1
+	}
+	out := make([]OrderItemComponent, 0, len(src))
+	for _, c := range src {
+		if c.ProductID != "" && c.Quantity > 0 {
+			out = append(out, OrderItemComponent{ProductID: c.ProductID, Quantity: c.Quantity * mult})
+		}
+	}
+	return out
+}
+
+func isKitLine(it OrderItem, recipes map[string][]OrderItemComponent) ([]OrderItemComponent, bool) {
+	recipe, ok := recipes[it.ProductID]
+	if !ok || (len(recipe) == 0 && len(it.Components) == 0) {
+		return nil, false
+	}
+	return recipe, true
+}
+
+// legacyKitPicked: orders separated before kits were picked by component have the kit product
+// itself picked in full and none of its components picked.
+func legacyKitPicked(it OrderItem, comps []OrderItemComponent, picks []Pick) bool {
+	if PickedQty(picks, it.ProductID) < it.Quantity {
+		return false
+	}
+	for _, c := range comps {
+		if PickedQty(picks, c.ProductID) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// PickRequirements expands kit lines into what must be picked, mirroring stock-service's
+// ExpandKitItems: every component of a kit line, plus the kit product itself (bipped last, as
+// confirmation that the kit is closed). Non-kit lines pass through unchanged.
+func PickRequirements(items []OrderItem, picks []Pick, recipes map[string][]OrderItemComponent) map[string]float64 {
+	req := map[string]float64{}
+	for _, it := range items {
+		recipe, isKit := isKitLine(it, recipes)
+		if !isKit {
+			req[it.ProductID] += it.Quantity
+			continue
+		}
+		req[it.ProductID] += it.Quantity
+		comps := kitLineComponents(it, recipe)
+		if legacyKitPicked(it, comps, picks) {
+			continue
+		}
+		for _, c := range comps {
+			req[c.ProductID] += c.Quantity
+		}
+	}
+	return req
+}
+
+// KitComponentsPicked reports whether every component of the given kit product's order lines
+// is already picked — the precondition for bipping the kit itself.
+func KitComponentsPicked(items []OrderItem, picks []Pick, recipes map[string][]OrderItemComponent, kitProductID string) bool {
+	need := map[string]float64{}
+	for _, it := range items {
+		if it.ProductID != kitProductID {
+			continue
+		}
+		recipe, isKit := isKitLine(it, recipes)
+		if !isKit {
+			continue
+		}
+		for _, c := range kitLineComponents(it, recipe) {
+			need[c.ProductID] += c.Quantity
+		}
+	}
+	for pid, q := range need {
+		if PickedQty(picks, pid) < q-1e-9 {
+			return false
+		}
+	}
+	return true
 }
 
 type ProductLoad struct {

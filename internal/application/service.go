@@ -280,13 +280,20 @@ func (s *Service) ScanPick(ctx context.Context, orderID, productID, warehouseID 
 		return domain.Order{}, err
 	}
 	warehouseID = picking.WarehouseID
+	recipes, err := s.kitRecipes(ctx)
+	if err != nil {
+		return domain.Order{}, err
+	}
 	var ordered float64
 	for _, it := range o.Items {
 		if it.ProductID == productID {
 			ordered += it.Quantity
 		}
 	}
-	if ordered <= 0 {
+	if ordered <= 0 && domain.PickRequirements(o.Items, nil, recipes)[productID] <= 0 {
+		return domain.Order{}, domain.ErrInvalid
+	}
+	if _, isKit := recipes[productID]; isKit && ordered > 0 && !domain.KitComponentsPicked(o.Items, o.Picks, recipes, productID) {
 		return domain.Order{}, domain.ErrInvalid
 	}
 	if _, err := s.orders.AddPick(ctx, orderID, domain.Pick{PickingID: picking.ID, ProductID: productID, WarehouseID: warehouseID, Quantity: qty}); err != nil {
@@ -311,7 +318,11 @@ func (s *Service) CompletePicking(ctx context.Context, orderID string, volumeCou
 	if o.Status != "APPROVED" && o.Status != "PICKING" {
 		return domain.Order{}, domain.ErrInvalid
 	}
-	if !pickingDone(o) {
+	recipes, err := s.kitRecipes(ctx)
+	if err != nil {
+		return domain.Order{}, err
+	}
+	if !pickingDone(o, recipes) {
 		return domain.Order{}, domain.ErrInvalid
 	}
 	return s.finishPicking(ctx, orderID, volumeCount)
@@ -377,12 +388,20 @@ func (s *Service) finishPicking(ctx context.Context, orderID string, volumeCount
 	return s.orders.Get(ctx, orderID)
 }
 
-func pickingDone(o domain.Order) bool {
+// kitRecipes returns nil (no kit expansion) when no catalog is wired.
+func (s *Service) kitRecipes(ctx context.Context) (map[string][]domain.OrderItemComponent, error) {
+	if s.catalog == nil {
+		return nil, nil
+	}
+	return s.catalog.KitRecipes(ctx)
+}
+
+func pickingDone(o domain.Order, recipes map[string][]domain.OrderItemComponent) bool {
 	if len(o.Items) == 0 {
 		return false
 	}
-	for _, it := range o.Items {
-		if domain.PickedQty(o.Picks, it.ProductID) < it.Quantity {
+	for productID, qty := range domain.PickRequirements(o.Items, o.Picks, recipes) {
+		if domain.PickedQty(o.Picks, productID) < qty-1e-9 {
 			return false
 		}
 	}

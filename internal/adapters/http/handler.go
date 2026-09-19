@@ -218,7 +218,7 @@ func (h *Handler) completePicking(c *gin.Context) {
 		VolumeCount int `json:"volume_count"`
 	}
 	_ = c.ShouldBindJSON(&in)
-	out, err := h.svc.CompletePicking(c.Request.Context(), c.Param("id"), in.VolumeCount)
+	out, err := h.svc.CompletePicking(h.withAuth(c), c.Param("id"), in.VolumeCount)
 	if err != nil {
 		status := http.StatusConflict
 		if errors.Is(err, domain.ErrNotFound) {

@@ -25,6 +25,12 @@ func New(base string) *Client {
 }
 
 func (c *Client) ScheduleSale(ctx context.Context, orderID, customerID, methodID, termID string, amount float64, at time.Time) error {
+	// A zero-value order (partnerships, bonuses) has no cash to schedule, and cashflow
+	// rejects amount <= 0. Clear any schedule left from a previous non-zero total
+	// instead of failing an order that is already saved.
+	if amount <= 0 {
+		return c.CancelSchedule(ctx, orderID)
+	}
 	return c.schedule(ctx, map[string]any{
 		"direction":         "IN",
 		"amount":            amount,

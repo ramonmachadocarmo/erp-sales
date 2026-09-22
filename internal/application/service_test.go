@@ -626,3 +626,25 @@ func TestDeleteOrderInvoicedRefusedBeforeTouchingCashflow(t *testing.T) {
 		t.Fatalf("cashflow should not be touched when delete is refused, got: %+v", cash.cancelled)
 	}
 }
+
+func TestCreateOrderDeliveryDate(t *testing.T) {
+	newOrder := func(date string) domain.Order {
+		return domain.Order{
+			CustomerID: "c1", PaymentMethodID: "m", PaymentTermID: "t", DeliveryDate: date,
+			Items: []domain.OrderItem{{ProductID: "p", Quantity: 1, UnitPrice: 10}},
+		}
+	}
+	svc := testSvc(&memOrders{}, okDir{}, &cashSpy{})
+	o, err := svc.CreateOrder(context.Background(), newOrder("2026-09-25"))
+	if err != nil || o.DeliveryDate != "2026-09-25" {
+		t.Fatalf("valid date: %v %+v", err, o.DeliveryDate)
+	}
+	if _, err := svc.CreateOrder(context.Background(), newOrder("")); err != nil {
+		t.Fatalf("empty date (PDV) must be accepted: %v", err)
+	}
+	for _, bad := range []string{"25/09/2026", "2026-13-01", "amanhã"} {
+		if _, err := svc.CreateOrder(context.Background(), newOrder(bad)); err != domain.ErrInvalid {
+			t.Fatalf("%q must be rejected, got %v", bad, err)
+		}
+	}
+}

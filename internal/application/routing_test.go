@@ -89,3 +89,34 @@ func TestHeldKarpBeatsNaive(t *testing.T) {
 		t.Fatalf("%v cost %v", got, tourCost(dur, got))
 	}
 }
+
+func TestPackByDateNeverMixesDates(t *testing.T) {
+	vehicles := []vehicleCap{{ID: "v1", Kg: 1000, M3: 10, Name: "Van", Code: "V1"}}
+	items := []loadItem{
+		{ID: "a", Kg: 10, M3: 0.1, CoordIdx: 1, Lat: -23.5, Lng: -46.6, Date: "2026-09-23"},
+		{ID: "b", Kg: 10, M3: 0.1, CoordIdx: 2, Lat: -23.6, Lng: -46.7, Date: "2026-09-22"},
+		{ID: "c", Kg: 10, M3: 0.1, CoordIdx: 3, Lat: -23.7, Lng: -46.8, Date: ""},
+		{ID: "d", Kg: 10, M3: 0.1, CoordIdx: 4, Lat: -23.55, Lng: -46.65, Date: "2026-09-22"},
+	}
+	trips, left := packByDate(items, vehicles, -23.5, -46.6)
+	if len(left) != 0 {
+		t.Fatalf("leftover: %+v", left)
+	}
+	if len(trips) != 3 {
+		t.Fatalf("want one trip per date (3), got %d", len(trips))
+	}
+	// oldest date first, undated last
+	if trips[0].date != "2026-09-22" || trips[1].date != "2026-09-23" || trips[2].date != "" {
+		t.Fatalf("order: %q %q %q", trips[0].date, trips[1].date, trips[2].date)
+	}
+	for _, tr := range trips {
+		for _, it := range tr.Items {
+			if it.Date != tr.date {
+				t.Fatalf("trip %q carries an order due %q", tr.date, it.Date)
+			}
+		}
+	}
+	if len(trips[0].Items) != 2 {
+		t.Fatalf("both 22/09 orders share a trip, got %d", len(trips[0].Items))
+	}
+}

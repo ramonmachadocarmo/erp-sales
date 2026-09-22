@@ -28,10 +28,10 @@ func (r *PlanRepo) CreateMany(ctx context.Context, plans []domain.DeliveryPlan) 
 			return nil, err
 		}
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO delivery_plans (center_id, vehicle_id, status, distance_m, duration_s, weight_kg, volume_m3, occupancy_pct, geometry)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			INSERT INTO delivery_plans (center_id, vehicle_id, status, distance_m, duration_s, weight_kg, volume_m3, occupancy_pct, geometry, delivery_date)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,'')::date)
 			RETURNING id, created_at
-		`, p.CenterID, p.VehicleID, p.Status, p.DistanceM, p.DurationS, p.WeightKg, p.VolumeM3, p.OccupancyPct, geom).
+		`, p.CenterID, p.VehicleID, p.Status, p.DistanceM, p.DurationS, p.WeightKg, p.VolumeM3, p.OccupancyPct, geom, p.DeliveryDate).
 			Scan(&p.ID, &p.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -54,7 +54,7 @@ func (r *PlanRepo) CreateMany(ctx context.Context, plans []domain.DeliveryPlan) 
 
 func (r *PlanRepo) List(ctx context.Context) ([]domain.DeliveryPlan, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, center_id::text, vehicle_id::text, status, distance_m, duration_s, weight_kg, volume_m3, occupancy_pct, geometry, created_at
+		SELECT id, center_id::text, vehicle_id::text, status, distance_m, duration_s, weight_kg, volume_m3, occupancy_pct, geometry, COALESCE(to_char(delivery_date, 'YYYY-MM-DD'), ''), created_at
 		FROM delivery_plans WHERE status <> 'CANCELLED' ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -82,7 +82,7 @@ func (r *PlanRepo) List(ctx context.Context) ([]domain.DeliveryPlan, error) {
 
 func (r *PlanRepo) Get(ctx context.Context, id string) (domain.DeliveryPlan, error) {
 	row := r.pool.QueryRow(ctx, `
-		SELECT id, center_id::text, vehicle_id::text, status, distance_m, duration_s, weight_kg, volume_m3, occupancy_pct, geometry, created_at
+		SELECT id, center_id::text, vehicle_id::text, status, distance_m, duration_s, weight_kg, volume_m3, occupancy_pct, geometry, COALESCE(to_char(delivery_date, 'YYYY-MM-DD'), ''), created_at
 		FROM delivery_plans WHERE id=$1
 	`, id)
 	p, err := scanPlan(row)
@@ -228,7 +228,7 @@ type rowScanner interface {
 func scanPlan(row rowScanner) (domain.DeliveryPlan, error) {
 	var p domain.DeliveryPlan
 	var geom []byte
-	err := row.Scan(&p.ID, &p.CenterID, &p.VehicleID, &p.Status, &p.DistanceM, &p.DurationS, &p.WeightKg, &p.VolumeM3, &p.OccupancyPct, &geom, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.CenterID, &p.VehicleID, &p.Status, &p.DistanceM, &p.DurationS, &p.WeightKg, &p.VolumeM3, &p.OccupancyPct, &geom, &p.DeliveryDate, &p.CreatedAt)
 	if err != nil {
 		return domain.DeliveryPlan{}, err
 	}

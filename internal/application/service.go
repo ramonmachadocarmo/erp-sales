@@ -25,6 +25,15 @@ func New(orders domain.OrderRepository, dir domain.Directory, cashflow domain.Ca
 	return &Service{orders: orders, dir: dir, cashflow: cashflow, catalog: catalog, router: router, plans: plans, identity: identity, audit: auditLogger}
 }
 
+// validDeliveryDate accepts an empty date (PDV/counter sales) or a YYYY-MM-DD one.
+func validDeliveryDate(d string) bool {
+	if d == "" {
+		return true
+	}
+	_, err := time.Parse("2006-01-02", d)
+	return err == nil
+}
+
 func (s *Service) CreateOrder(ctx context.Context, o domain.Order) (domain.Order, error) {
 	if o.PaymentMethodID == "" || o.PaymentTermID == "" {
 		return domain.Order{}, domain.ErrInvalid
@@ -34,8 +43,11 @@ func (s *Service) CreateOrder(ctx context.Context, o domain.Order) (domain.Order
 	if o.PaymentStatus != domain.PaymentStatusPaid {
 		o.PaymentStatus = domain.PaymentStatusPending
 	}
-	if err := s.dir.EnsureCustomer(ctx, o.CustomerID); err != nil {
+		if err := s.dir.EnsureCustomer(ctx, o.CustomerID); err != nil {
 		return domain.Order{}, err
+	}
+	if o.DeliveryDate = strings.TrimSpace(o.DeliveryDate); !validDeliveryDate(o.DeliveryDate) {
+		return domain.Order{}, domain.ErrInvalid
 	}
 	if len(o.Items) == 0 {
 		return domain.Order{}, domain.ErrInvalid
@@ -77,8 +89,11 @@ func (s *Service) UpdateOrder(ctx context.Context, id string, in domain.Order) (
 	if in.PaymentMethodID == "" || in.PaymentTermID == "" || len(in.Items) == 0 {
 		return domain.Order{}, domain.ErrInvalid
 	}
-	if err := s.dir.EnsureCustomer(ctx, in.CustomerID); err != nil {
+		if err := s.dir.EnsureCustomer(ctx, in.CustomerID); err != nil {
 		return domain.Order{}, err
+	}
+	if in.DeliveryDate = strings.TrimSpace(in.DeliveryDate); !validDeliveryDate(in.DeliveryDate) {
+		return domain.Order{}, domain.ErrInvalid
 	}
 	var subtotal float64
 	for i := range in.Items {

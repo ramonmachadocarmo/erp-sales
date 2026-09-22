@@ -156,7 +156,7 @@ func (s *Service) CreatePlans(ctx context.Context, centerID string, vehicleIDs, 
 		}
 		kg, m3 := s.orderLoad(ctx, o)
 		coords = append(coords, domain.Coord{Lat: lat, Lng: lng})
-		items = append(items, loadItem{ID: o.ID, Kg: kg, M3: m3, CoordIdx: len(coords) - 1, Lat: lat, Lng: lng})
+		items = append(items, loadItem{ID: o.ID, Kg: kg, M3: m3, CoordIdx: len(coords) - 1, Lat: lat, Lng: lng, Date: o.DeliveryDate})
 	}
 	if len(items) == 0 {
 		reason := "nenhuma entrega com coordenada"
@@ -169,7 +169,7 @@ func (s *Service) CreatePlans(ctx context.Context, centerID string, vehicleIDs, 
 		}
 		return domain.PlanResult{Skipped: skipped}, fmt.Errorf("%s", reason)
 	}
-	trips, leftover := packTrips(items, vehicles, center.Lat, center.Lng)
+	trips, leftover := packByDate(items, vehicles, center.Lat, center.Lng)
 	for _, it := range leftover {
 		skipped = append(skipped, domain.SkippedStop{OrderID: it.ID, Reason: "exceeds vehicle capacity"})
 	}
@@ -221,7 +221,7 @@ func (s *Service) CreatePlans(ctx context.Context, centerID string, vehicleIDs, 
 		}
 		best := options[0]
 		plans = append(plans, domain.DeliveryPlan{
-			CenterID: center.ID, VehicleID: t.Vehicle.ID, Status: "PLANNED",
+			CenterID: center.ID, VehicleID: t.Vehicle.ID, DeliveryDate: t.date, Status: "PLANNED",
 			DistanceM: best.DistanceM, DurationS: best.DurationS, WeightKg: t.Kg, VolumeM3: t.M3,
 			OccupancyPct: occupancy(t.Kg, t.M3, t.Vehicle.Kg, t.Vehicle.M3),
 			Geometry:     best.Geometry, Stops: best.Stops, Options: options,

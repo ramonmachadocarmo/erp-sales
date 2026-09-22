@@ -10,6 +10,40 @@ type loadItem struct {
 	Kg, M3   float64
 	CoordIdx int
 	Lat, Lng float64
+	Date     string // delivery date (YYYY-MM-DD); a route never mixes dates
+}
+
+// datedTrip is a trip packed from the orders of a single delivery date.
+type datedTrip struct {
+	trip
+	date string
+}
+
+// packByDate packs each delivery date on its own, oldest date first, so a route only ever
+// carries orders due the same day. Orders without a date are packed together, last.
+func packByDate(items []loadItem, vehicles []vehicleCap, depotLat, depotLng float64) (trips []datedTrip, leftover []loadItem) {
+	byDate := map[string][]loadItem{}
+	var dates []string
+	for _, it := range items {
+		if _, ok := byDate[it.Date]; !ok {
+			dates = append(dates, it.Date)
+		}
+		byDate[it.Date] = append(byDate[it.Date], it)
+	}
+	sort.SliceStable(dates, func(i, j int) bool {
+		if dates[i] == "" || dates[j] == "" {
+			return dates[j] == "" && dates[i] != ""
+		}
+		return dates[i] < dates[j]
+	})
+	for _, d := range dates {
+		ts, left := packTrips(byDate[d], vehicles, depotLat, depotLng)
+		for _, t := range ts {
+			trips = append(trips, datedTrip{trip: t, date: d})
+		}
+		leftover = append(leftover, left...)
+	}
+	return trips, leftover
 }
 
 type vehicleCap struct {

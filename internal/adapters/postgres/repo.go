@@ -38,12 +38,12 @@ func (r *Repo) CreateOrder(ctx context.Context, o domain.Order, _ []byte) (domai
 	}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO sales_orders (customer_id, warehouse_id, status, payment_status, subtotal_amount, discount_amount, total_amount, payment_method_id, payment_term_id,
-			address_id, address_alias, address_zip, address_street, address_number, address_complement, address_district, address_city, address_state, address_lat, address_lng)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+			address_id, address_alias, address_zip, address_street, address_number, address_complement, address_district, address_city, address_state, address_lat, address_lng, delivery_date)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NULLIF($21,'')::date)
 		RETURNING id, created_at, updated_at
 	`, o.CustomerID, warehouseID, o.Status, o.PaymentStatus, o.SubtotalAmount, o.DiscountAmount, o.TotalAmount, o.PaymentMethodID, o.PaymentTermID,
 		addressID, o.Address.Alias, o.Address.Zip, o.Address.Street, o.Address.Number, o.Address.Complement, o.Address.District, o.Address.City, o.Address.State,
-		nullFloat(o.Address.Lat), nullFloat(o.Address.Lng)).
+		nullFloat(o.Address.Lat), nullFloat(o.Address.Lng), o.DeliveryDate).
 		Scan(&o.ID, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		return domain.Order{}, err
@@ -76,14 +76,14 @@ func (r *Repo) GetOrder(ctx context.Context, id string) (domain.Order, error) {
 			COALESCE(pk.warehouse_id::text, o.warehouse_id::text, ''),
 			o.status, o.payment_status, COALESCE(o.delivery_note, ''), o.subtotal_amount, o.discount_amount, o.total_amount, o.payment_method_id, o.payment_term_id,
 			COALESCE(o.address_id::text, ''), o.address_alias, o.address_zip, o.address_street, o.address_number, o.address_complement, o.address_district, o.address_city, o.address_state,
-			o.address_lat, o.address_lng,
+			o.address_lat, o.address_lng, COALESCE(to_char(o.delivery_date, 'YYYY-MM-DD'), ''),
 			o.created_at, o.updated_at
 		FROM sales_orders o
 		LEFT JOIN sales_pickings pk ON pk.sales_order_id = o.id
 		WHERE o.id=$1
 	`, id).Scan(&o.ID, &o.CustomerID, &o.WarehouseID, &o.Status, &o.PaymentStatus, &o.DeliveryNote, &o.SubtotalAmount, &o.DiscountAmount, &o.TotalAmount, &o.PaymentMethodID, &o.PaymentTermID,
 		&o.Address.ID, &o.Address.Alias, &o.Address.Zip, &o.Address.Street, &o.Address.Number, &o.Address.Complement, &o.Address.District, &o.Address.City, &o.Address.State,
-		&lat, &lng, &o.CreatedAt, &o.UpdatedAt)
+		&lat, &lng, &o.DeliveryDate, &o.CreatedAt, &o.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Order{}, domain.ErrNotFound
 	}
@@ -111,7 +111,7 @@ func (r *Repo) ListOrders(ctx context.Context, from, to *time.Time) ([]domain.Or
 			COALESCE(pk.warehouse_id::text, o.warehouse_id::text, ''),
 			o.status, o.payment_status, COALESCE(o.delivery_note, ''), o.subtotal_amount, o.discount_amount, o.total_amount, o.payment_method_id, o.payment_term_id,
 			COALESCE(o.address_id::text, ''), o.address_alias, o.address_zip, o.address_street, o.address_number, o.address_complement, o.address_district, o.address_city, o.address_state,
-			o.address_lat, o.address_lng,
+			o.address_lat, o.address_lng, COALESCE(to_char(o.delivery_date, 'YYYY-MM-DD'), ''),
 			o.created_at, o.updated_at
 		FROM sales_orders o
 		LEFT JOIN sales_pickings pk ON pk.sales_order_id = o.id
@@ -129,7 +129,7 @@ func (r *Repo) ListOrders(ctx context.Context, from, to *time.Time) ([]domain.Or
 		var lat, lng sql.NullFloat64
 		if err := rows.Scan(&o.ID, &o.CustomerID, &o.WarehouseID, &o.Status, &o.PaymentStatus, &o.DeliveryNote, &o.SubtotalAmount, &o.DiscountAmount, &o.TotalAmount, &o.PaymentMethodID, &o.PaymentTermID,
 			&o.Address.ID, &o.Address.Alias, &o.Address.Zip, &o.Address.Street, &o.Address.Number, &o.Address.Complement, &o.Address.District, &o.Address.City, &o.Address.State,
-			&lat, &lng, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&lat, &lng, &o.DeliveryDate, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, err
 		}
 		applyGeo(&o.Address, lat, lng)
@@ -250,11 +250,11 @@ func (r *Repo) Replace(ctx context.Context, o domain.Order) (domain.Order, error
 			subtotal_amount=$5, discount_amount=$6, total_amount=$7,
 			address_id=$8, address_alias=$9, address_zip=$10, address_street=$11, address_number=$12,
 			address_complement=$13, address_district=$14, address_city=$15, address_state=$16,
-			address_lat=$17, address_lng=$18, payment_status=$19, updated_at=NOW()
+			address_lat=$17, address_lng=$18, payment_status=$19, delivery_date=NULLIF($20,'')::date, updated_at=NOW()
 		WHERE id=$1
 	`, o.ID, o.CustomerID, o.PaymentMethodID, o.PaymentTermID, o.SubtotalAmount, o.DiscountAmount, o.TotalAmount,
 		addressID, o.Address.Alias, o.Address.Zip, o.Address.Street, o.Address.Number, o.Address.Complement,
-		o.Address.District, o.Address.City, o.Address.State, nullFloat(o.Address.Lat), nullFloat(o.Address.Lng), o.PaymentStatus)
+		o.Address.District, o.Address.City, o.Address.State, nullFloat(o.Address.Lat), nullFloat(o.Address.Lng), o.PaymentStatus, o.DeliveryDate)
 	if err != nil {
 		return domain.Order{}, err
 	}

@@ -97,8 +97,11 @@ type Order struct {
 	SubtotalAmount  float64      `json:"subtotal_amount"`
 	DiscountAmount  float64      `json:"discount_amount"`
 	TotalAmount     float64      `json:"total_amount"`
-	Address         OrderAddress `json:"address"`
-	Items           []OrderItem  `json:"items"`
+		Address         OrderAddress `json:"address"`
+	// DeliveryDate is the day the customer expects the order (YYYY-MM-DD, "" = not set). Route
+	// planning groups deliveries by it.
+	DeliveryDate string      `json:"delivery_date"`
+	Items        []OrderItem `json:"items"`
 	Picking         *Picking     `json:"picking,omitempty"`
 	Picks           []Pick       `json:"picks"`
 	DeliveryNote    string       `json:"delivery_note,omitempty"`
@@ -279,7 +282,8 @@ type PlanStop struct {
 type DeliveryPlan struct {
 	ID           string        `json:"id"`
 	CenterID     string        `json:"center_id"`
-	VehicleID    string        `json:"vehicle_id"`
+		VehicleID    string        `json:"vehicle_id"`
+	DeliveryDate string        `json:"delivery_date"`
 	Status       string        `json:"status"`
 	DistanceM    float64       `json:"distance_m"`
 	DurationS    float64       `json:"duration_s"`

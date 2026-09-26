@@ -627,6 +627,37 @@ func TestDeleteOrderInvoicedRefusedBeforeTouchingCashflow(t *testing.T) {
 	}
 }
 
+func TestOnNFeIssuedDoesNotResurrectCancelledOrder(t *testing.T) {
+	orders := &memOrders{byID: map[string]domain.Order{"so1": {ID: "so1", Status: "CANCELLED"}}}
+	svc := testSvc(orders, okDir{}, &cashSpy{})
+	if err := svc.OnNFeIssued(context.Background(), domain.InvoiceEvent{SalesOrderID: "so1", InvoiceID: "inv1"}); err != nil {
+		t.Fatalf("%v", err)
+	}
+	got, _ := orders.Get(context.Background(), "so1")
+	if got.Status != "CANCELLED" {
+		t.Fatalf("expected order to stay CANCELLED, got: %+v", got)
+	}
+}
+
+func TestOnNFeIssuedIgnoresDeletedOrder(t *testing.T) {
+	svc := testSvc(&memOrders{}, okDir{}, &cashSpy{})
+	if err := svc.OnNFeIssued(context.Background(), domain.InvoiceEvent{SalesOrderID: "gone", InvoiceID: "inv1"}); err != nil {
+		t.Fatalf("expected nil (idempotent no-op) for a deleted order, got: %v", err)
+	}
+}
+
+func TestOnNFeIssuedSetsInvoicedForActiveOrder(t *testing.T) {
+	orders := &memOrders{byID: map[string]domain.Order{"so1": {ID: "so1", Status: "APPROVED"}}}
+	svc := testSvc(orders, okDir{}, &cashSpy{})
+	if err := svc.OnNFeIssued(context.Background(), domain.InvoiceEvent{SalesOrderID: "so1", InvoiceID: "inv1"}); err != nil {
+		t.Fatalf("%v", err)
+	}
+	got, _ := orders.Get(context.Background(), "so1")
+	if got.Status != "INVOICED" {
+		t.Fatalf("expected order to become INVOICED, got: %+v", got)
+	}
+}
+
 func TestCreateOrderDeliveryDate(t *testing.T) {
 	newOrder := func(date string) domain.Order {
 		return domain.Order{

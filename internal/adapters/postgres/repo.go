@@ -40,11 +40,11 @@ func (r *Repo) CreateOrder(ctx context.Context, o domain.Order, _ []byte) (domai
 		INSERT INTO sales_orders (customer_id, warehouse_id, status, payment_status, subtotal_amount, discount_amount, total_amount, payment_method_id, payment_term_id,
 			address_id, address_alias, address_zip, address_street, address_number, address_complement, address_district, address_city, address_state, address_lat, address_lng, delivery_date)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NULLIF($21,'')::date)
-		RETURNING id, created_at, updated_at
+		RETURNING id, number, created_at, updated_at
 	`, o.CustomerID, warehouseID, o.Status, o.PaymentStatus, o.SubtotalAmount, o.DiscountAmount, o.TotalAmount, o.PaymentMethodID, o.PaymentTermID,
 		addressID, o.Address.Alias, o.Address.Zip, o.Address.Street, o.Address.Number, o.Address.Complement, o.Address.District, o.Address.City, o.Address.State,
 		nullFloat(o.Address.Lat), nullFloat(o.Address.Lng), o.DeliveryDate).
-		Scan(&o.ID, &o.CreatedAt, &o.UpdatedAt)
+		Scan(&o.ID, &o.Number, &o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		return domain.Order{}, err
 	}
@@ -72,7 +72,7 @@ func (r *Repo) GetOrder(ctx context.Context, id string) (domain.Order, error) {
 	var o domain.Order
 	var lat, lng sql.NullFloat64
 	err := r.pool.QueryRow(ctx, `
-		SELECT o.id, o.customer_id,
+		SELECT o.id, o.number, o.customer_id,
 			COALESCE(pk.warehouse_id::text, o.warehouse_id::text, ''),
 			o.status, o.payment_status, COALESCE(o.delivery_note, ''), o.subtotal_amount, o.discount_amount, o.total_amount, o.payment_method_id, o.payment_term_id,
 			COALESCE(o.address_id::text, ''), o.address_alias, o.address_zip, o.address_street, o.address_number, o.address_complement, o.address_district, o.address_city, o.address_state,
@@ -81,7 +81,7 @@ func (r *Repo) GetOrder(ctx context.Context, id string) (domain.Order, error) {
 		FROM sales_orders o
 		LEFT JOIN sales_pickings pk ON pk.sales_order_id = o.id
 		WHERE o.id=$1
-	`, id).Scan(&o.ID, &o.CustomerID, &o.WarehouseID, &o.Status, &o.PaymentStatus, &o.DeliveryNote, &o.SubtotalAmount, &o.DiscountAmount, &o.TotalAmount, &o.PaymentMethodID, &o.PaymentTermID,
+	`, id).Scan(&o.ID, &o.Number, &o.CustomerID, &o.WarehouseID, &o.Status, &o.PaymentStatus, &o.DeliveryNote, &o.SubtotalAmount, &o.DiscountAmount, &o.TotalAmount, &o.PaymentMethodID, &o.PaymentTermID,
 		&o.Address.ID, &o.Address.Alias, &o.Address.Zip, &o.Address.Street, &o.Address.Number, &o.Address.Complement, &o.Address.District, &o.Address.City, &o.Address.State,
 		&lat, &lng, &o.DeliveryDate, &o.CreatedAt, &o.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -107,7 +107,7 @@ func (r *Repo) GetOrder(ctx context.Context, id string) (domain.Order, error) {
 
 func (r *Repo) ListOrders(ctx context.Context, from, to *time.Time) ([]domain.Order, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT o.id, o.customer_id,
+		SELECT o.id, o.number, o.customer_id,
 			COALESCE(pk.warehouse_id::text, o.warehouse_id::text, ''),
 			o.status, o.payment_status, COALESCE(o.delivery_note, ''), o.subtotal_amount, o.discount_amount, o.total_amount, o.payment_method_id, o.payment_term_id,
 			COALESCE(o.address_id::text, ''), o.address_alias, o.address_zip, o.address_street, o.address_number, o.address_complement, o.address_district, o.address_city, o.address_state,
@@ -127,7 +127,7 @@ func (r *Repo) ListOrders(ctx context.Context, from, to *time.Time) ([]domain.Or
 	for rows.Next() {
 		var o domain.Order
 		var lat, lng sql.NullFloat64
-		if err := rows.Scan(&o.ID, &o.CustomerID, &o.WarehouseID, &o.Status, &o.PaymentStatus, &o.DeliveryNote, &o.SubtotalAmount, &o.DiscountAmount, &o.TotalAmount, &o.PaymentMethodID, &o.PaymentTermID,
+		if err := rows.Scan(&o.ID, &o.Number, &o.CustomerID, &o.WarehouseID, &o.Status, &o.PaymentStatus, &o.DeliveryNote, &o.SubtotalAmount, &o.DiscountAmount, &o.TotalAmount, &o.PaymentMethodID, &o.PaymentTermID,
 			&o.Address.ID, &o.Address.Alias, &o.Address.Zip, &o.Address.Street, &o.Address.Number, &o.Address.Complement, &o.Address.District, &o.Address.City, &o.Address.State,
 			&lat, &lng, &o.DeliveryDate, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, err

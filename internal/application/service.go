@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -141,8 +142,24 @@ func (s *Service) OnStockReserved(ctx context.Context, ev domain.OrderEvent) err
 	return s.orders.UpdateStatus(ctx, ev.OrderID, "APPROVED")
 }
 
+// OnNFeIssued flips the order to INVOICED once its NFe is confirmed — except when the order
+// was already CANCELLED (or deleted) by the time the event arrives. A draft NFe is created
+// automatically as soon as stock reserves, well before cancellation is even possible, so a
+// stale draft can still get manually confirmed after its order was cancelled; without this
+// guard that would silently resurrect the order back to INVOICED (same bug class OnStockReserved
+// already guards against for its own transition).
 func (s *Service) OnNFeIssued(ctx context.Context, ev domain.InvoiceEvent) error {
 	if ev.SalesOrderID == "" {
+		return nil
+	}
+	o, err := s.orders.Get(ctx, ev.SalesOrderID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if o.Status == "CANCELLED" {
 		return nil
 	}
 	return s.orders.UpdateStatus(ctx, ev.SalesOrderID, "INVOICED")

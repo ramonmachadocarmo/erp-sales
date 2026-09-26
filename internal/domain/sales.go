@@ -88,6 +88,7 @@ const (
 
 type Order struct {
 	ID              string       `json:"id"`
+	Number          int          `json:"number"`
 	CustomerID      string       `json:"customer_id"`
 	WarehouseID     string       `json:"warehouse_id,omitempty"`
 	PaymentMethodID string       `json:"payment_method_id"`
